@@ -58,6 +58,10 @@ class Sailthru_Client {
 
     private $httpHeaders = array("User-Agent: Sailthru API PHP5 Client");
 
+    const DEFAULT_READ_TIMEOUT  = 10000;
+    const DEFAULT_CONNECT_TIMEOUT = 10000;
+
+    private $options = array('timeout' => Sailthru_Client::DEFAULT_READ_TIMEOUT, 'connect_timeout' => Sailthru_Client::DEFAULT_CONNECT_TIMEOUT);
 
     /**
      * Instantiate a new client; constructor optionally takes overrides for api_uri and whether
@@ -66,9 +70,10 @@ class Sailthru_Client {
      * @param string $api_key
      * @param string $secret
      * @param string $api_uri
+     * @param array $options - optional parameters for connect/read timeout
      * @param boolean $show_version
      */
-    public function  __construct($api_key, $secret, $api_uri = false) {
+    public function  __construct($api_key, $secret, $api_uri = false, $options = null) {
         $this->api_key = $api_key;
         $this->secret = $secret;
         if ($api_uri !== false) {
@@ -76,6 +81,19 @@ class Sailthru_Client {
         }
 
         $this->http_request_type = function_exists('curl_init') ? 'httpRequestCurl' : 'httpRequestWithoutCurl';
+
+        if (isset($options)) {
+            $this->options['timeout']         = isset($options['timeout']) ? (int)$options['timeout'] : Sailthru_Client::DEFAULT_READ_TIMEOUT;
+            $this->options['connect_timeout'] = isset($options['connect_timeout']) ? (int)$options['connect_timeout'] : Sailthru_Client::DEFAULT_CONNECT_TIMEOUT;
+        }
+    }
+
+    public function getConnectTimeout() {
+        return $this->options['connect_timeout'];
+    }
+
+    public function getTimeout() {
+        return $this->options['timeout'];
     }
 
     public function setHttpHeaders(array $headers) {
@@ -579,9 +597,8 @@ class Sailthru_Client {
      * @param Mixed $tags Null for empty values, or String or arrays
      * @link http://docs.sailthru.com/api/content
      */
-    public function pushContent($title, $url, $date = null, $tags = null, $vars = array(),$spider = 1) {
-        $data = array();
-        $data['spider'] = $spider;
+    public function pushContent($title, $url, $date = null, $tags = null, $vars = array(), $options = array()) {
+        $data = $options;
         $data['title'] = $title;
         $data['url'] = $url;
         if (!is_null($tags)) {
@@ -1075,8 +1092,8 @@ class Sailthru_Client {
      * @return boolean
      */
     public function setHorizonCookie($email, $domain = null, $duration = null, $secure = false) {
-        $data = $this->getHorizon($email, true);
-        if (!isset($data['hid'])) {
+        $data = $this->getUserByKey($email, 'email', array('keys' => 1));
+        if (!isset($data['keys']['cookie'])) {
             return false;
         }
         if (!$domain) {
@@ -1090,7 +1107,7 @@ class Sailthru_Client {
         } else {
             $expire = 0;
         }
-        return setcookie('sailthru_hid', $data['hid'], $expire, '/', $domain, $secure);
+        return setcookie('sailthru_hid', $data['keys']['cookie'], $expire, '/', $domain, $secure);
     }
 
     /**
@@ -1221,29 +1238,69 @@ class Sailthru_Client {
     }
 
     /**
-     * Get information on a trigger
-     * @param type $template
-     * @param type $trigger_id
-     * @return type
+     * Get Triggers
+     * @return array
      * @link http://docs.sailthru.com/api/trigger
      */
-    public function getTrigger($template, $trigger_id) {
+    public function getTriggers() {
+        $result = $this->apiGet('trigger');
+        return $result;
+    }
+
+    /**
+     * Get information on a trigger
+     * @param string $template
+     * @param string $trigger_id
+     * @return array
+     * @link http://docs.sailthru.com/api/trigger
+     */
+    public function getTriggerByTemplate($template, $trigger_id = null) {
         $data = array();
         $data['template'] = $template;
-        $data['trigger_id'] = $trigger_id;
+        if(!is_null($trigger_id)){
+            $data['trigger_id'] = $trigger_id;
+        }
 
+        $result = $this->apiGet('trigger', $data);
+        return $result;
+    }
+    
+    /**
+     * Get information on a trigger
+     * @param string $event
+     * @return array
+     * @link http://docs.sailthru.com/api/trigger
+     */
+    public function getTriggerByEvent($event) {
+        $data = array();
+        $data['event'] = $event;
+        
+        $result = $this->apiGet('trigger', $data);
+        return $result;
+    }    
+
+    /**
+     * Get information on a trigger
+     * @param string $trigger_id
+     * @return array
+     * @link http://docs.sailthru.com/api/trigger
+     */
+    public function getTriggerById($trigger_id) {
+        $data = array();
+        $data['trigger_id'] = $trigger_id;
+        
         $result = $this->apiGet('trigger', $data);
         return $result;
     }
 
     /**
-     * Create a trigger
-     * @param type $template
-     * @param type $time
-     * @param type $time_unit
-     * @param type $event
-     * @param type $zephyr
-     * @return type
+     * Create a trigger for templates
+     * @param string $template
+     * @param integer $time
+     * @param string $time_unit
+     * @param string $event
+     * @param string $zephyr
+     * @return array
      * @link http://docs.sailthru.com/api/trigger
      */
     public function postTrigger($template, $time, $time_unit, $event, $zephyr) {
@@ -1259,6 +1316,43 @@ class Sailthru_Client {
     }
 
     /**
+     * Create a trigger for events
+     * @param integer $time
+     * @param string $time_unit
+     * @param string $event
+     * @param string $zephyr
+     * @return array
+     * @link http://docs.sailthru.com/api/trigger
+     */
+    public function postEventTrigger($event, $time, $time_unit, $zephyr) {
+        $data = array();
+        $data['time'] = $time;
+        $data['time_unit'] = $time_unit;
+        $data['event'] = $event;
+        $data['zephyr'] = $zephyr;
+
+        $result = $this->apiPost('trigger', $data);
+        return $result;
+    }
+
+    /**
+     * Notify Sailthru of an event
+     * @param string $id
+     * @param string $event
+     * @param array $options
+     * @return array
+     * @link http://docs.sailthru.com/api/event
+     */
+    public function postEvent($id, $event, $options = array()) {
+        $data = $options;
+        $data['id'] = $id;
+        $data['event'] = $event;
+
+        $result = $this->apiPost('event', $data);
+        return $result;
+    }
+
+    /**
      * Perform an HTTP request using the curl extension
      *
      * @param string $url
@@ -1266,8 +1360,9 @@ class Sailthru_Client {
      * @param array $headers
      * @return string
      */
-    private function httpRequestCurl($url, array $data, $method = 'POST') {
+    protected function httpRequestCurl($url, array $data, $method = 'POST', $options = array()) {
         $ch = curl_init();
+        $options = array_merge($this->options, $options);
         if ($method == 'POST') {
             curl_setopt($ch, CURLOPT_POST, true);
             if ($this->fileUpload === true) {
@@ -1285,6 +1380,9 @@ class Sailthru_Client {
         }
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_HEADER, false);
+        curl_setopt($ch, CURLOPT_ENCODING, 'gzip');
+        curl_setopt($ch, CURLOPT_TIMEOUT_MS, $options['timeout']);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT_MS, $options['connect_timeout']);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
         curl_setopt($ch, CURLOPT_HTTPHEADER, $this->httpHeaders);
@@ -1306,13 +1404,13 @@ class Sailthru_Client {
      * @param array $headers
      * @return string
      */
-    private function httpRequestWithoutCurl($url, $data, $method = 'POST') {
+    protected function httpRequestWithoutCurl($url, $data, $method = 'POST', $options = array()) {
         if ($this->fileUpload === true) {
             $this->fileUpload = false;
             throw new Sailthru_Client_Exception('cURL extension is required for the request with file upload');
         }
 
-        $params = array('http' => array('method' => $method));
+        $params = array('http' => array('method' => $method, 'ignore_errors' => true));
         if ($method == 'POST') {
             $params['http']['content'] = is_array($data) ? http_build_query($data, '', '&') : $data;
         } else {
@@ -1340,8 +1438,8 @@ class Sailthru_Client {
      * @param array $headers
      * @return string
      */
-    protected function httpRequest($url, $data, $method = 'POST') {
-        $response = $this->{$this->http_request_type}($url, $data, $method);
+    protected function httpRequest($url, $data, $method = 'POST', $options = array()) {
+        $response = $this->{$this->http_request_type}($url, $data, $method, $options);
         $json = json_decode($response, true);
         if ($json === NULL) {
             throw new Sailthru_Client_Exception("Response: {$response} is not a valid JSON");
@@ -1357,19 +1455,21 @@ class Sailthru_Client {
      * @param array $data
      * @return array
      */
-    public  function apiPost($action, $data, array $binary_data_param = array()) {
+    public  function apiPost($action, $data, array $binary_data_param = array(), $options = array()) {
         $binary_data = array();
         if (!empty ($binary_data_param)) {
             foreach ($binary_data_param as $param) {
                 if (isset($data[$param]) && file_exists($data[$param])) {
-                    $binary_data[$param] = "@{$data[$param]}";
+                    $binary_data[$param] = version_compare(PHP_VERSION, '5.5.0') >= 0 && class_exists('CURLFile')
+                        ? new CURLFile($data[$param])
+                        : "@{$data[$param]}";
                     unset($data[$param]);
                     $this->fileUpload = true;
                 }
             }
         }
         $payload = $this->prepareJsonPayload($data, $binary_data);
-        return $this->httpRequest("$this->api_uri/$action", $payload, 'POST');
+        return $this->httpRequest("$this->api_uri/$action", $payload, 'POST', $options);
     }
 
 
@@ -1380,8 +1480,8 @@ class Sailthru_Client {
      * @param array $data
      * @return array
      */
-    public function apiGet($action, $data = array(), $method = 'GET') {
-        return $this->httpRequest("{$this->api_uri}/{$action}", $this->prepareJsonPayload($data), $method);
+    public function apiGet($action, $data = array(), $method = 'GET', $options = array()) {
+        return $this->httpRequest("{$this->api_uri}/{$action}", $this->prepareJsonPayload($data), $method, $options);
     }
 
 
@@ -1392,8 +1492,8 @@ class Sailthru_Client {
      * @param array $data
      * @return array
      */
-    public function apiDelete($action, $data) {
-        return $this->apiGet($action, $data, 'DELETE');
+    public function apiDelete($action, $data, $options = array()) {
+        return $this->apiGet($action, $data, 'DELETE', $options);
     }
 
 
