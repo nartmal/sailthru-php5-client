@@ -1,5 +1,7 @@
 <?php
 require(__DIR__ . '/../sailthru/Sailthru_Client.php');
+require(__DIR__ . '/../sailthru/Sailthru_Client_Exception.php');
+require(__DIR__ . '/../sailthru/Sailthru_Util.php');
 
 class Sailthru_ClientTest extends PHPUnit_Framework_TestCase {
     public function setUp() {
@@ -7,6 +9,19 @@ class Sailthru_ClientTest extends PHPUnit_Framework_TestCase {
         $this->secret = 'my_secret';
         $this->api_url = 'https://api.sailthru.com';
         $this->sailthru_client = new Sailthru_Client($this->api_key, $this->secret, $this->api_url);
+    }
+
+    public function testDefaultTimeoutParameter() {
+        $this->sailthru_client = new Sailthru_Client($this->api_key, $this->secret, $this->api_url);
+        $this->assertTrue($this->sailthru_client->getTimeout() == 10000);
+        $this->assertTrue($this->sailthru_client->getConnectTimeout() == 10000);
+    }
+
+    public function testCustomTimeoutParameter() {
+        $this->sailthru_client = new Sailthru_Client($this->api_key, $this->secret, $this->api_url,
+                                                     array('timeout' => 1, 'connect_timeout' => 2));
+        $this->assertTrue($this->sailthru_client->getTimeout() == 1);
+        $this->assertTrue($this->sailthru_client->getConnectTimeout() == 2);
     }
 
     public function testSendWhenTemplateNameIsInvalid() {
